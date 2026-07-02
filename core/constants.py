@@ -8,7 +8,7 @@ and makes maintenance easier.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Final
 
@@ -215,27 +215,35 @@ class Constants:
     SUCCESS_DEACTIVATION: Final[str] = "License deactivated successfully"
 
     # Feature descriptions
-    FEATURE_DESCRIPTIONS: Final[dict[str, str]] = {
-        Feature.REPORTING.value: "Advanced reporting and analytics",
-        Feature.AI_MODULE.value: "AI-powered features and predictions",
-        Feature.EXPORT.value: "Export data to PDF, Excel, and CSV",
-        Feature.API_ACCESS.value: "REST API access for integration",
-        Feature.CLOUD_SYNC.value: "Cloud synchronization across devices",
-        Feature.BACKUP.value: "Automated backup and restore",
-        Feature.PREMIUM_DASHBOARD.value: "Premium dashboard with advanced metrics",
-        Feature.MULTI_USER.value: "Multi-user support with roles",
-        Feature.ADVANCED_ANALYTICS.value: "Advanced analytics and insights",
-        Feature.CUSTOM_INTEGRATION.value: "Custom third-party integrations",
-    }
+    FEATURE_DESCRIPTIONS: Final[dict[str, str]] = field(
+        default_factory=lambda: {
+            Feature.REPORTING.value: "Advanced reporting and analytics",
+            Feature.AI_MODULE.value: "AI-powered features and predictions",
+            Feature.EXPORT.value: "Export data to PDF, Excel, and CSV",
+            Feature.API_ACCESS.value: "REST API access for integration",
+            Feature.CLOUD_SYNC.value: "Cloud synchronization across devices",
+            Feature.BACKUP.value: "Automated backup and restore",
+            Feature.PREMIUM_DASHBOARD.value: "Premium dashboard with advanced metrics",
+            Feature.MULTI_USER.value: "Multi-user support with roles",
+            Feature.ADVANCED_ANALYTICS.value: "Advanced analytics and insights",
+            Feature.CUSTOM_INTEGRATION.value: "Custom third-party integrations",
+        },
+        init=False,
+        repr=False,
+    )
 
     # License type descriptions
-    LICENSE_TYPE_DESCRIPTIONS: Final[dict[str, str]] = {
-        LicenseType.TRIAL.value: "30-day trial with limited features",
-        LicenseType.LIFETIME.value: "Lifetime license with all features",
-        LicenseType.MONTHLY.value: "Monthly subscription with full features",
-        LicenseType.YEARLY.value: "Yearly subscription with full features",
-        LicenseType.ENTERPRISE.value: "Enterprise license with all features and support",
-    }
+    LICENSE_TYPE_DESCRIPTIONS: Final[dict[str, str]] = field(
+        default_factory=lambda: {
+            LicenseType.TRIAL.value: "30-day trial with limited features",
+            LicenseType.LIFETIME.value: "Lifetime license with all features",
+            LicenseType.MONTHLY.value: "Monthly subscription with full features",
+            LicenseType.YEARLY.value: "Yearly subscription with full features",
+            LicenseType.ENTERPRISE.value: "Enterprise license with all features and support",
+        },
+        init=False,
+        repr=False,
+    )
 
     # Theme colors
     THEME_PRIMARY: Final[str] = "#2196F3"
