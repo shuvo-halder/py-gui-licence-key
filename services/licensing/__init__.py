@@ -1,0 +1,1 @@
+"""Licensing service package."""
