@@ -1,128 +1,278 @@
 """
-Main application window for the Software License Manager desktop GUI.
+Main application window - Enterprise License Manager Desktop.
 
-Provides a modern dark-themed interface with sidebar navigation,
-dashboard, and management pages for all license operations.
+Provides a modern dark-themed interface with top header bar,
+animated sidebar navigation, stacked pages, theme switching,
+and server connection status.
 """
 
 from __future__ import annotations
 
+import asyncio
+from typing import Optional
+
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QStackedWidget, QFrame,
-    QApplication, QSizePolicy, QSpacerItem,
+    QApplication, QSizePolicy, QSpacerItem, QLineEdit,
+    QDialog, QMessageBox, QGraphicsDropShadowEffect,
+    QScrollArea, QToolButton, QMenu, QSystemTrayIcon,
 )
-from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
-from PySide6.QtGui import QFont, QIcon, QPalette, QColor, QAction
+from PySide6.QtCore import (
+    Qt, QSize, Signal, Slot, QTimer, QPropertyAnimation,
+    QEasingCurve, QParallelAnimationGroup, QRect,
+)
+from PySide6.QtGui import (
+    QFont, QIcon, QPalette, QColor, QAction, QPixmap,
+    QPainter, QBrush, QPen, QLinearGradient, QFontDatabase,
+    QCursor,
+)
 
 from core.config import settings
 from core.constants import Constants
 from core.logger import get_logger
 
-from app.pages.software_page import SoftwarePage
+from app.widgets import (
+    Colors, AvatarWidget, ToastManager, ToastType,
+    button_style, card_style, input_style, SearchBar,
+)
+from app.pages import (
+    DashboardPage, LicensePage, CustomerPage, MachinePage,
+    SubscriptionPage, ActivationPage, AnalyticsPage,
+    AuditPage, SettingsPage, SdkPage, SoftwarePage,
+)
 
 logger = get_logger(__name__)
 
 
-class SidebarButton(QPushButton):
-    """Custom sidebar navigation button with hover effects."""
+# ─── Sidebar Button ──────────────────────────────────────────────────────────
 
-    def __init__(self, text: str, icon_text: str = "", parent=None) -> None:
-        """Initialize sidebar button."""
-        super().__init__(text, parent)
-        self.icon_text = icon_text
+class SidebarButton(QPushButton):
+    """Animated sidebar navigation button with icon and hover effects."""
+
+    def __init__(self, text: str, icon: str = "", shortcut: str = "", parent=None) -> None:
+        super().__init__(parent)
+        self._text = text
+        self._icon = icon
+        self._shortcut = shortcut
+        self._collapsed = False
         self.setCheckable(True)
         self.setMinimumHeight(48)
         self.setCursor(Qt.PointingHandCursor)
-        self.setStyleSheet("""
-            QPushButton {
+        self._update_style()
+
+    def _update_style(self) -> None:
+        padding = "12px 16px" if self._collapsed else "12px 16px 12px 20px"
+        text_align = "center" if self._collapsed else "left"
+        fg = f"{self._icon} " if self._icon else ""
+        self.setText(f"{fg}{self._text}" if not self._collapsed else self._icon)
+        self.setToolTip(f"{self._text} ({self._shortcut})" if self._shortcut else self._text)
+        
+        self.setStyleSheet(f"""
+            QPushButton {{
                 background-color: transparent;
-                color: #B0B0B0;
+                color: {Colors.TEXT_SECONDARY};
                 border: none;
                 border-radius: 8px;
-                padding: 12px 20px;
-                text-align: left;
+                padding: {padding};
+                text-align: {text_align};
                 font-size: 14px;
                 font-weight: 500;
-            }
-            QPushButton:hover {
-                background-color: #3A3A3A;
-                color: #FFFFFF;
-            }
-            QPushButton:checked {
-                background-color: #2196F3;
-                color: #FFFFFF;
+                margin: 2px 8px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_PRIMARY};
+            }}
+            QPushButton:checked {{
+                background-color: rgba(33, 150, 243, 0.15);
+                color: {Colors.PRIMARY};
                 font-weight: 600;
-            }
+                border-left: 3px solid {Colors.PRIMARY};
+            }}
         """)
 
+    def set_collapsed(self, collapsed: bool) -> None:
+        self._collapsed = collapsed
+        self._update_style()
+
     def set_active(self, active: bool) -> None:
-        """Set button active state."""
         self.setChecked(active)
 
 
+# ─── Sidebar ─────────────────────────────────────────────────────────────────
+
 class Sidebar(QFrame):
-    """Application sidebar with navigation items."""
+    """Expandable sidebar with navigation items and smooth animation."""
 
     page_changed = Signal(int)
 
     def __init__(self, parent=None) -> None:
-        """Initialize sidebar."""
         super().__init__(parent)
-        self.setFixedWidth(260)
-        self.setStyleSheet("""
-            Sidebar {
-                background-color: #1E1E1E;
-                border-right: 1px solid #333333;
-            }
+        self._expanded = True
+        self._expanded_width = 260
+        self._collapsed_width = 72
+        self._setup_ui()
+
+    def _setup_ui(self) -> None:
+        self.setFixedWidth(self._expanded_width)
+        self.setStyleSheet(f"""
+            Sidebar {{
+                background-color: {Colors.BG_DARK};
+                border-right: 1px solid {Colors.BORDER_LIGHT};
+            }}
         """)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(12, 20, 12, 20)
-        layout.setSpacing(4)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
 
-        # App logo/title
-        title_label = QLabel("🔐 License Manager")
-        title_label.setStyleSheet("""
-            font-size: 18px;
-            font-weight: 700;
-            color: #FFFFFF;
-            padding: 12px 8px 24px 8px;
+        # Sidebar header with collapse button
+        header = QFrame()
+        header.setStyleSheet(f"background-color: {Colors.BG_LIGHT}; border-bottom: 1px solid {Colors.BORDER_LIGHT};")
+        header.setFixedHeight(64)
+        header_layout = QHBoxLayout(header)
+        header_layout.setContentsMargins(16, 0, 16, 0)
+
+        self.logo_label = QLabel("🔐")
+        self.logo_label.setStyleSheet("font-size: 28px;")
+        header_layout.addWidget(self.logo_label)
+
+        self.title_label = QLabel("License\nManager")
+        self.title_label.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: 14px; font-weight: 700; line-height: 1.2;")
+        header_layout.addWidget(self.title_label, 1)
+
+        self.collapse_btn = QPushButton("◀")
+        self.collapse_btn.setFixedSize(28, 28)
+        self.collapse_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: {Colors.BG_HOVER};
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-radius: 14px;
+                font-size: 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_ACTIVE};
+                color: {Colors.TEXT_PRIMARY};
+            }}
         """)
-        layout.addWidget(title_label)
+        self.collapse_btn.clicked.connect(self._toggle_collapse)
+        header_layout.addWidget(self.collapse_btn)
+
+        layout.addWidget(header)
+
+        # Scroll area for nav items
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        scroll.setStyleSheet(f"""
+            QScrollArea {{
+                border: none;
+                background-color: transparent;
+            }}
+            QScrollBar:vertical {{
+                width: 4px;
+                background: transparent;
+            }}
+            QScrollBar::handle:vertical {{
+                background: {Colors.BG_ACTIVE};
+                border-radius: 2px;
+                min-height: 20px;
+            }}
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{
+                height: 0px;
+            }}
+        """)
+
+        nav_container = QWidget()
+        nav_container.setStyleSheet("background-color: transparent;")
+        self.nav_layout = QVBoxLayout(nav_container)
+        self.nav_layout.setContentsMargins(0, 8, 0, 8)
+        self.nav_layout.setSpacing(2)
 
         # Navigation items
-        self.buttons = []
+        self.buttons: list[SidebarButton] = []
         nav_items = [
-            (0, "📊", "Dashboard"),
-            (1, "🔑", "Licenses"),
-            (2, "📋", "Subscriptions"),
-            (3, "✅", "Activation"),
-            (4, "💻", "Machines"),
-            (5, "👥", "Customers"),
-            (6, "📦", "Products"),
-            (7, "🔌", "Software"),
-            (8, "⚙️", "Settings"),
-            (9, "📝", "Logs"),
+            (0, "📊", "Dashboard", "Ctrl+D"),
+            (1, "🔑", "Licenses", "Ctrl+L"),
+            (2, "👥", "Customers", "Ctrl+C"),
+            (3, "📦", "Products", "Ctrl+P"),
+            (4, "📋", "Subscriptions", "Ctrl+S"),
+            (5, "💻", "Machines", "Ctrl+M"),
+            (6, "✅", "Activations", "Ctrl+A"),
+            (7, "🔌", "Software", "Ctrl+W"),
+            (8, "📥", "SDK Generator", "Ctrl+G"),
+            (9, "📊", "Analytics", "Ctrl+Y"),
+            (10, "📝", "Audit Logs", "Ctrl+O"),
+            (11, "⚙️", "Settings", "Ctrl+,"),
         ]
 
-        for page_index, icon, text in nav_items:
-            btn = SidebarButton(f"  {icon}  {text}")
+        for page_index, icon, text, shortcut in nav_items:
+            btn = SidebarButton(text, icon, shortcut)
             btn.clicked.connect(lambda checked, idx=page_index: self.page_changed.emit(idx))
-            layout.addWidget(btn)
+            self.nav_layout.addWidget(btn)
             self.buttons.append(btn)
 
-        layout.addStretch()
+        self.nav_layout.addStretch()
 
-        # Version info
-        version_label = QLabel(f"v{settings.APP_VERSION}")
-        version_label.setStyleSheet("""
-            color: #666666;
-            font-size: 12px;
-            padding: 8px;
-        """)
-        version_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(version_label)
+        scroll.setWidget(nav_container)
+        layout.addWidget(scroll, 1)
+
+        # Bottom status
+        bottom = QFrame()
+        bottom.setStyleSheet(f"background-color: {Colors.BG_LIGHT}; border-top: 1px solid {Colors.BORDER_LIGHT};")
+        bottom.setFixedHeight(48)
+        bottom_layout = QHBoxLayout(bottom)
+        bottom_layout.setContentsMargins(16, 0, 16, 0)
+
+        status_dot = QLabel("●")
+        status_dot.setStyleSheet(f"color: {Colors.SUCCESS}; font-size: 10px;")
+        bottom_layout.addWidget(status_dot)
+
+        self.status_text = QLabel("Connected")
+        self.status_text.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 12px;")
+        bottom_layout.addWidget(self.status_text, 1)
+
+        self.version_label = QLabel(f"v{settings.APP_VERSION}")
+        self.version_label.setStyleSheet(f"color: {Colors.TEXT_MUTED}; font-size: 11px;")
+        bottom_layout.addWidget(self.version_label)
+
+        layout.addWidget(bottom)
+
+    def _toggle_collapse(self) -> None:
+        """Animate sidebar collapse/expand."""
+        self._expanded = not self._expanded
+        target_width = self._expanded_width if self._expanded else self._collapsed_width
+
+        self.animation = QPropertyAnimation(self, b"maximumWidth")
+        self.animation.setDuration(200)
+        self.animation.setStartValue(self.width())
+        self.animation.setEndValue(target_width)
+        self.animation.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation.finished.connect(self._on_animation_end)
+        self.animation.start()
+
+        self.animation2 = QPropertyAnimation(self, b"minimumWidth")
+        self.animation2.setDuration(200)
+        self.animation2.setStartValue(self.width())
+        self.animation2.setEndValue(target_width)
+        self.animation2.setEasingCurve(QEasingCurve.InOutQuad)
+        self.animation2.start()
+
+        # Update button states
+        collapsed = not self._expanded
+        for btn in self.buttons:
+            btn.set_collapsed(collapsed)
+
+        self.title_label.setVisible(self._expanded)
+        self.collapse_btn.setText("▶" if not self._expanded else "◀")
+        self.logo_label.setVisible(True)
+
+    def _on_animation_end(self) -> None:
+        """Handle animation completion."""
+        pass
 
     def set_active_page(self, page_index: int) -> None:
         """Highlight the active page button."""
@@ -130,196 +280,282 @@ class Sidebar(QFrame):
             btn.set_active(i == page_index)
 
 
-class DashboardPage(QWidget):
-    """Dashboard page with statistics and status overview."""
+# ─── Top Header ──────────────────────────────────────────────────────────────
+
+class TopHeader(QFrame):
+    """Top header bar with search, notifications, theme toggle, and window controls."""
+
+    theme_toggled = Signal()
+    search_requested = Signal(str)
 
     def __init__(self, parent=None) -> None:
-        """Initialize dashboard page."""
         super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(24, 24, 24, 24)
-        layout.setSpacing(16)
+        self._dark_mode = True
+        self._setup_ui()
 
-        # Header
-        header = QLabel("📊 Dashboard")
-        header.setStyleSheet("font-size: 28px; font-weight: 700; color: #FFFFFF;")
-        layout.addWidget(header)
-
-        # Stats cards grid
-        cards_layout = QHBoxLayout()
-        cards_layout.setSpacing(16)
-
-        stats = [
-            ("🔑 Active Licenses", "0", "#4CAF50"),
-            ("❌ Expired", "0", "#F44336"),
-            ("📋 Subscriptions", "0", "#2196F3"),
-            ("💻 Machines", "0", "#FF9800"),
-        ]
-
-        for title, value, color in stats:
-            card = self._create_stat_card(title, value, color)
-            cards_layout.addWidget(card)
-
-        layout.addLayout(cards_layout)
-
-        # Status section
-        status_frame = QFrame()
-        status_frame.setStyleSheet("""
-            QFrame {
-                background-color: #2D2D2D;
-                border-radius: 12px;
-                padding: 20px;
-            }
-        """)
-        status_layout = QVBoxLayout(status_frame)
-
-        status_header = QLabel("System Status")
-        status_header.setStyleSheet("font-size: 18px; font-weight: 600; color: #FFFFFF; margin-bottom: 12px;")
-        status_layout.addWidget(status_header)
-
-        status_items = [
-            ("Server Status", "✅ Online", "#4CAF50"),
-            ("Last Sync", "Just now", "#B0B0B0"),
-            ("API Version", settings.APP_VERSION, "#2196F3"),
-            ("Database", "Connected", "#4CAF50"),
-        ]
-
-        for label, value, color in status_items:
-            row = QHBoxLayout()
-            lbl = QLabel(label)
-            lbl.setStyleSheet("color: #B0B0B0; font-size: 14px;")
-            val = QLabel(value)
-            val.setStyleSheet(f"color: {color}; font-size: 14px; font-weight: 600;")
-            val.setAlignment(Qt.AlignRight)
-            row.addWidget(lbl)
-            row.addWidget(val)
-            status_layout.addLayout(row)
-
-        layout.addWidget(status_frame)
-        layout.addStretch()
-
-    def _create_stat_card(self, title: str, value: str, color: str) -> QFrame:
-        """Create a statistics card widget."""
-        card = QFrame()
-        card.setStyleSheet(f"""
-            QFrame {{
-                background-color: #2D2D2D;
-                border-radius: 12px;
-                border-left: 4px solid {color};
-                padding: 20px;
+    def _setup_ui(self) -> None:
+        self.setFixedHeight(64)
+        self.setStyleSheet(f"""
+            TopHeader {{
+                background-color: {Colors.BG_LIGHT};
+                border-bottom: 1px solid {Colors.BORDER_LIGHT};
             }}
         """)
-        card.setMinimumHeight(120)
 
-        card_layout = QVBoxLayout(card)
-        title_lbl = QLabel(title)
-        title_lbl.setStyleSheet("color: #B0B0B0; font-size: 13px;")
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(20, 0, 20, 0)
+        layout.setSpacing(16)
 
-        value_lbl = QLabel(value)
-        value_lbl.setStyleSheet(f"color: {color}; font-size: 32px; font-weight: 700;")
+        # App icon + name
+        app_icon = QLabel("🔐")
+        app_icon.setStyleSheet("font-size: 24px;")
+        layout.addWidget(app_icon)
 
-        card_layout.addWidget(title_lbl)
-        card_layout.addWidget(value_lbl)
+        app_name = QLabel("License Manager")
+        app_name.setStyleSheet(f"color: {Colors.TEXT_PRIMARY}; font-size: 18px; font-weight: 700;")
+        layout.addWidget(app_name)
 
-        return card
+        # Current user
+        user_avatar = AvatarWidget("Admin User", size=32, color=Colors.PRIMARY)
+        layout.addWidget(user_avatar)
+
+        user_name = QLabel("Admin")
+        user_name.setStyleSheet(f"color: {Colors.TEXT_SECONDARY}; font-size: 13px;")
+        layout.addWidget(user_name)
+
+        layout.addSpacing(20)
+
+        # Search bar
+        self.search = SearchBar("Search licenses, customers, products...")
+        self.search.setFixedWidth(320)
+        self.search.search_submitted.connect(self.search_requested.emit)
+        layout.addWidget(self.search)
+
+        layout.addStretch()
+
+        # Notification icon
+        notif_btn = QPushButton("🔔")
+        notif_btn.setFixedSize(36, 36)
+        notif_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-radius: 18px;
+                font-size: 18px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+        notif_btn.setToolTip("Notifications")
+        layout.addWidget(notif_btn)
+
+        # Settings icon
+        settings_btn = QPushButton("⚙️")
+        settings_btn.setFixedSize(36, 36)
+        settings_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-radius: 18px;
+                font-size: 18px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+        settings_btn.setToolTip("Settings")
+        settings_btn.clicked.connect(self._open_settings)
+        layout.addWidget(settings_btn)
+
+        # Theme toggle
+        self.theme_btn = QPushButton("🌙")
+        self.theme_btn.setFixedSize(36, 36)
+        self.theme_btn.setStyleSheet(f"""
+            QPushButton {{
+                background-color: transparent;
+                color: {Colors.TEXT_SECONDARY};
+                border: none;
+                border-radius: 18px;
+                font-size: 18px;
+            }}
+            QPushButton:hover {{
+                background-color: {Colors.BG_HOVER};
+            }}
+        """)
+        self.theme_btn.setToolTip("Toggle Theme")
+        self.theme_btn.clicked.connect(self._toggle_theme)
+        layout.addWidget(self.theme_btn)
+
+        # Server status indicator
+        status_frame = QFrame()
+        status_frame.setStyleSheet(f"""
+            QFrame {{
+                background-color: rgba(76, 175, 80, 0.1);
+                border: 1px solid {Colors.SUCCESS}44;
+                border-radius: 16px;
+                padding: 4px 12px;
+            }}
+        """)
+        status_layout = QHBoxLayout(status_frame)
+        status_layout.setContentsMargins(8, 4, 8, 4)
+        status_layout.setSpacing(4)
+        status_dot = QLabel("●")
+        status_dot.setStyleSheet(f"color: {Colors.SUCCESS}; font-size: 10px;")
+        status_layout.addWidget(status_dot)
+        status_text = QLabel("Online")
+        status_text.setStyleSheet(f"color: {Colors.SUCCESS}; font-size: 12px; font-weight: 600;")
+        status_layout.addWidget(status_text)
+        layout.addWidget(status_frame)
+
+        # Window controls
+        layout.addSpacing(8)
+        controls = QHBoxLayout()
+        controls.setSpacing(4)
+
+        minimize_btn = QPushButton("─")
+        minimize_btn.setFixedSize(36, 28)
+        minimize_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {Colors.TEXT_SECONDARY};
+                border: none; border-radius: 4px; font-size: 14px;
+            }}
+            QPushButton:hover {{ background-color: {Colors.BG_HOVER}; }}
+        """)
+        minimize_btn.clicked.connect(lambda: self.window().showMinimized())
+        controls.addWidget(minimize_btn)
+
+        maximize_btn = QPushButton("□")
+        maximize_btn.setFixedSize(36, 28)
+        maximize_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {Colors.TEXT_SECONDARY};
+                border: none; border-radius: 4px; font-size: 14px;
+            }}
+            QPushButton:hover {{ background-color: {Colors.BG_HOVER}; }}
+        """)
+        maximize_btn.clicked.connect(lambda: self.window().showMaximized() if self.window().isMaximized() else self.window().showNormal())
+        controls.addWidget(maximize_btn)
+
+        close_btn = QPushButton("✕")
+        close_btn.setFixedSize(36, 28)
+        close_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {Colors.TEXT_SECONDARY};
+                border: none; border-radius: 4px; font-size: 14px;
+            }}
+            QPushButton:hover {{ background-color: {Colors.DANGER}; color: white; }}
+        """)
+        close_btn.clicked.connect(lambda: self.window().close())
+        controls.addWidget(close_btn)
+
+        layout.addLayout(controls)
+
+    def _toggle_theme(self) -> None:
+        self._dark_mode = not self._dark_mode
+        self.theme_btn.setText("☀️" if not self._dark_mode else "🌙")
+        self.theme_toggled.emit()
+
+    def _open_settings(self) -> None:
+        """Navigate to settings page."""
+        main_window = self.window()
+        if hasattr(main_window, 'sidebar') and hasattr(main_window, 'stack'):
+            settings_idx = 11  # Settings is index 11
+            main_window.sidebar.set_active_page(settings_idx)
+            main_window.stack.setCurrentIndex(settings_idx)
 
 
-class PlaceholderPage(QWidget):
-    """Generic placeholder page for sections not yet implemented."""
-
-    def __init__(self, title: str, emoji: str = "📄", parent=None) -> None:
-        """Initialize placeholder page."""
-        super().__init__(parent)
-        layout = QVBoxLayout(self)
-        layout.setAlignment(Qt.AlignCenter)
-
-        icon_label = QLabel(emoji)
-        icon_label.setStyleSheet("font-size: 64px;")
-        icon_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(icon_label)
-
-        title_label = QLabel(title)
-        title_label.setStyleSheet("font-size: 24px; font-weight: 600; color: #FFFFFF; margin-top: 16px;")
-        title_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(title_label)
-
-        desc_label = QLabel("This section is under development")
-        desc_label.setStyleSheet("font-size: 14px; color: #666666; margin-top: 8px;")
-        desc_label.setAlignment(Qt.AlignCenter)
-        layout.addWidget(desc_label)
-
+# ─── Main Window ─────────────────────────────────────────────────────────────
 
 class MainWindow(QMainWindow):
-    """Main application window."""
+    """Enterprise License Manager main window."""
 
     def __init__(self) -> None:
-        """Initialize main window."""
         super().__init__()
 
-        self.setWindowTitle(settings.APP_NAME)
+        self.setWindowTitle(f"{settings.APP_NAME} v{settings.APP_VERSION}")
         self.setMinimumSize(Constants.WINDOW_MIN_WIDTH, Constants.WINDOW_MIN_HEIGHT)
         self.resize(Constants.WINDOW_DEFAULT_WIDTH, Constants.WINDOW_DEFAULT_HEIGHT)
 
         # Apply dark theme
         self._apply_dark_theme()
 
+        # Toast manager
+        self.toast_manager = ToastManager(self)
+
         # Central widget
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
 
-        main_layout = QHBoxLayout(central_widget)
+        main_layout = QVBoxLayout(central_widget)
         main_layout.setContentsMargins(0, 0, 0, 0)
         main_layout.setSpacing(0)
+
+        # Top header
+        self.header = TopHeader()
+        self.header.search_requested.connect(self._on_global_search)
+        self.header.theme_toggled.connect(self._toggle_theme)
+        main_layout.addWidget(self.header)
+
+        # Content area
+        content_container = QWidget()
+        content_container.setStyleSheet(f"background-color: {Colors.BG_MEDIUM};")
+        content_layout = QHBoxLayout(content_container)
+        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.setSpacing(0)
 
         # Sidebar
         self.sidebar = Sidebar()
         self.sidebar.page_changed.connect(self._on_page_changed)
-        main_layout.addWidget(self.sidebar)
-
-        # Content area
-        content_container = QWidget()
-        content_container.setStyleSheet("background-color: #252526;")
-        content_layout = QVBoxLayout(content_container)
-        content_layout.setContentsMargins(0, 0, 0, 0)
+        content_layout.addWidget(self.sidebar)
 
         # Stacked widget for pages
         self.stack = QStackedWidget()
-        content_layout.addWidget(self.stack)
+        self.stack.setStyleSheet(f"background-color: {Colors.BG_MEDIUM};")
+        content_layout.addWidget(self.stack, 1)
 
         main_layout.addWidget(content_container, 1)
 
-        # Add pages
+        # Setup all pages
         self._setup_pages()
 
         # Show dashboard by default
         self.sidebar.set_active_page(0)
         self.stack.setCurrentIndex(0)
 
-        logger.info("Main window initialized")
+        # Show welcome toast
+        QTimer.singleShot(500, self._show_welcome)
+
+        # Setup keyboard shortcuts
+        self._setup_shortcuts()
+
+        logger.info(f"Main window initialized - {settings.APP_NAME} v{settings.APP_VERSION}")
 
     def _setup_pages(self) -> None:
-        """Setup all application pages."""
-        # Software page
+        """Setup all application pages and add them to the stack."""
+        # SoftwarePage instances with signal connections
         self.software_page = SoftwarePage()
-
-        # Connect software page signals
         self.software_page.product_added.connect(self._on_product_added)
         self.software_page.product_updated.connect(self._on_product_updated)
         self.software_page.product_deleted.connect(self._on_product_deleted)
         self.software_page.search_requested.connect(self._on_software_search)
         self.software_page.sdk_generate_requested.connect(self._on_sdk_generate)
-
+        
         pages = [
             (DashboardPage(), "Dashboard"),
-            (PlaceholderPage("License Management", "🔑"), "Licenses"),
-            (PlaceholderPage("Subscriptions", "📋"), "Subscriptions"),
-            (PlaceholderPage("Activation", "✅"), "Activation"),
-            (PlaceholderPage("Machine Management", "💻"), "Machines"),
-            (PlaceholderPage("Customer Management", "👥"), "Customers"),
-            (PlaceholderPage("Product Management", "📦"), "Products"),
+            (LicensePage(), "Licenses"),
+            (CustomerPage(), "Customers"),
+            (SoftwarePage(), "Products"),
+            (SubscriptionPage(), "Subscriptions"),
+            (MachinePage(), "Machines"),
+            (ActivationPage(), "Activations"),
             (self.software_page, "Software"),
-            (PlaceholderPage("Settings", "⚙️"), "Settings"),
-            (PlaceholderPage("Audit Logs", "📝"), "Logs"),
+            (SdkPage(), "SDK Generator"),
+            (AnalyticsPage(), "Analytics"),
+            (AuditPage(), "Audit Logs"),
+            (SettingsPage(), "Settings"),
         ]
 
         for page, name in pages:
@@ -328,11 +564,101 @@ class MainWindow(QMainWindow):
         # Load software products after setup
         QTimer.singleShot(500, self._load_software_products)
 
+        logger.info(f"Setup {len(pages)} application pages")
+
+    def _setup_shortcuts(self) -> None:
+        """Setup keyboard shortcuts for navigation."""
+        from PySide6.QtGui import QShortcut, QKeySequence
+
+        shortcuts = {
+            "Ctrl+D": 0,  # Dashboard
+            "Ctrl+L": 1,  # Licenses
+            "Ctrl+C": 2,  # Customers
+            "Ctrl+P": 3,  # Products
+            "Ctrl+S": 4,  # Subscriptions
+            "Ctrl+M": 5,  # Machines
+            "Ctrl+A": 6,  # Activations
+            "Ctrl+W": 7,  # Software
+            "Ctrl+G": 8,  # SDK Generator
+            "Ctrl+Y": 9,  # Analytics
+            "Ctrl+O": 10, # Audit Logs
+            "Ctrl+,": 11, # Settings
+        }
+
+        for key_seq, page_idx in shortcuts.items():
+            shortcut = QShortcut(QKeySequence(key_seq), self)
+            shortcut.activated.connect(lambda idx=page_idx: self._navigate_to(idx))
+
+    def _navigate_to(self, page_index: int) -> None:
+        """Navigate to a specific page by index."""
+        if 0 <= page_index < self.stack.count():
+            self.sidebar.set_active_page(page_index)
+            self.stack.setCurrentIndex(page_index)
+
     def _on_page_changed(self, page_index: int) -> None:
         """Handle page change from sidebar."""
-        self.sidebar.set_active_page(page_index)
-        self.stack.setCurrentIndex(page_index)
-        logger.info(f"Navigated to page: {page_index}")
+        if 0 <= page_index < self.stack.count():
+            self.sidebar.set_active_page(page_index)
+            self.stack.setCurrentIndex(page_index)
+            logger.info(f"Navigated to page: {page_index}")
+
+    def _on_global_search(self, query: str) -> None:
+        """Handle global search from the header."""
+        if query.strip():
+            logger.info(f"Global search: {query}")
+
+    def _toggle_theme(self) -> None:
+        """Toggle between dark and light theme."""
+        self._dark_mode = not getattr(self, '_dark_mode', True)
+        if self._dark_mode:
+            self._apply_dark_theme()
+        else:
+            self._apply_light_theme()
+
+    def _apply_dark_theme(self) -> None:
+        """Apply dark theme palette."""
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor(Colors.BG_MEDIUM))
+        palette.setColor(QPalette.WindowText, QColor(Colors.TEXT_PRIMARY))
+        palette.setColor(QPalette.Base, QColor(Colors.BG_DARK))
+        palette.setColor(QPalette.AlternateBase, QColor(Colors.BG_LIGHT))
+        palette.setColor(QPalette.ToolTipBase, QColor(Colors.BG_LIGHT))
+        palette.setColor(QPalette.ToolTipText, QColor(Colors.TEXT_PRIMARY))
+        palette.setColor(QPalette.Text, QColor(Colors.TEXT_PRIMARY))
+        palette.setColor(QPalette.Button, QColor(Colors.BG_LIGHT))
+        palette.setColor(QPalette.ButtonText, QColor(Colors.TEXT_PRIMARY))
+        palette.setColor(QPalette.BrightText, QColor(Colors.DANGER))
+        palette.setColor(QPalette.Link, QColor(Colors.PRIMARY))
+        palette.setColor(QPalette.Highlight, QColor(Colors.PRIMARY))
+        palette.setColor(QPalette.HighlightedText, QColor(Colors.TEXT_PRIMARY))
+        self.setPalette(palette)
+        self._dark_mode = True
+
+    def _apply_light_theme(self) -> None:
+        """Apply light theme palette."""
+        palette = QPalette()
+        palette.setColor(QPalette.Window, QColor("#F5F5F5"))
+        palette.setColor(QPalette.WindowText, QColor("#212121"))
+        palette.setColor(QPalette.Base, QColor("#FFFFFF"))
+        palette.setColor(QPalette.AlternateBase, QColor("#E0E0E0"))
+        palette.setColor(QPalette.ToolTipBase, QColor("#FFFFFF"))
+        palette.setColor(QPalette.ToolTipText, QColor("#212121"))
+        palette.setColor(QPalette.Text, QColor("#212121"))
+        palette.setColor(QPalette.Button, QColor("#E0E0E0"))
+        palette.setColor(QPalette.ButtonText, QColor("#212121"))
+        palette.setColor(QPalette.BrightText, QColor("#D32F2F"))
+        palette.setColor(QPalette.Link, QColor("#1976D2"))
+        palette.setColor(QPalette.Highlight, QColor("#1976D2"))
+        palette.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
+        self.setPalette(palette)
+        self._dark_mode = False
+
+    def _show_welcome(self) -> None:
+        """Show welcome toast notification."""
+        self.toast_manager.show_toast(
+            f"Welcome to {settings.APP_NAME} v{settings.APP_VERSION}",
+            ToastType.SUCCESS
+        )
 
     def _load_software_products(self) -> None:
         """Load software products into the Software page."""
@@ -506,47 +832,8 @@ class MainWindow(QMainWindow):
         finally:
             loop.close()
 
-    def _apply_dark_theme(self) -> None:
-        """Apply dark theme to the application."""
-        palette = QPalette()
-        palette.setColor(QPalette.Window, QColor("#252526"))
-        palette.setColor(QPalette.WindowText, QColor("#FFFFFF"))
-        palette.setColor(QPalette.Base, QColor("#1E1E1E"))
-        palette.setColor(QPalette.AlternateBase, QColor("#2D2D2D"))
-        palette.setColor(QPalette.ToolTipBase, QColor("#2D2D2D"))
-        palette.setColor(QPalette.ToolTipText, QColor("#FFFFFF"))
-        palette.setColor(QPalette.Text, QColor("#FFFFFF"))
-        palette.setColor(QPalette.Button, QColor("#2D2D2D"))
-        palette.setColor(QPalette.ButtonText, QColor("#FFFFFF"))
-        palette.setColor(QPalette.BrightText, QColor("#FF0000"))
-        palette.setColor(QPalette.Link, QColor("#2196F3"))
-        palette.setColor(QPalette.Highlight, QColor("#2196F3"))
-        palette.setColor(QPalette.HighlightedText, QColor("#FFFFFF"))
-
-        self.setPalette(palette)
-
-        # Global stylesheet
-        self.setStyleSheet("""
-            QMainWindow {
-                background-color: #252526;
-            }
-            QWidget {
-                font-family: 'Segoe UI', 'Arial', sans-serif;
-            }
-            QScrollBar:vertical {
-                background-color: #1E1E1E;
-                width: 10px;
-                border-radius: 5px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #424242;
-                border-radius: 5px;
-                min-height: 30px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #616161;
-            }
-            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
-                height: 0px;
-            }
-        """)
+    def resizeEvent(self, event) -> None:
+        """Handle window resize."""
+        super().resizeEvent(event)
+        if hasattr(self, 'toast_manager'):
+            self.toast_manager._reposition_toasts()

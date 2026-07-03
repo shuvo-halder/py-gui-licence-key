@@ -4,14 +4,177 @@ A **production-ready**, **enterprise-grade** desktop application for managing so
 
 ---
 
+## 🚀 Quick Start
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run the API server
+python main.py api
+
+# Run the desktop GUI
+python main.py gui
+```
+
+---
+
+## 🖥️ Desktop GUI (PySide6)
+
+The application features a modern, dark-themed enterprise desktop interface built with PySide6.
+
+### Top Header Bar
+- App logo & name
+- User avatar with initials
+- Global search bar
+- Notification & settings icons
+- Dark/light theme toggle
+- Server connection status indicator
+- Window controls (minimize/maximize/close)
+
+### Animated Sidebar
+12 navigation items with expand/collapse animation and keyboard shortcuts:
+
+| # | Page | Shortcut | Description |
+|---|------|----------|-------------|
+| 0 | 📊 Dashboard | `Ctrl+D` | SaaS-style dashboard with stats & charts |
+| 1 | 🔑 Licenses | `Ctrl+L` | Full license management with CRUD |
+| 2 | 👥 Customers | `Ctrl+C` | Customer directory management |
+| 3 | 📦 Products | `Ctrl+P` | Software product registry |
+| 4 | 📋 Subscriptions | `Ctrl+S` | Subscription plan management |
+| 5 | 💻 Machines | `Ctrl+M` | Hardware/fingerprint management |
+| 6 | ✅ Activations | `Ctrl+A` | License activation tracking |
+| 7 | 🔌 Software | `Ctrl+W` | Registered software management |
+| 8 | 📥 SDK Generator | `Ctrl+G` | Client SDK package generation |
+| 9 | 📊 Analytics | `Ctrl+Y` | Charts and reporting |
+| 10 | 📝 Audit Logs | `Ctrl+O` | System activity logs |
+| 11 | ⚙️ Settings | `Ctrl+,` | Application configuration |
+
+### Pages
+
+#### Dashboard (`app/pages/dashboard_page.py`)
+- 8 stat cards with icons, values, trend indicators, and mini bar charts
+- 4 chart widgets: License Trend, Revenue, Subscriptions, Activations
+- Recent activity feed with 7 sample activities
+- Refresh and export buttons
+- Loading overlay with simulated data loading
+
+#### License Management (`app/pages/license_page.py`)
+- Full table with 10 columns including checkboxes for multi-select
+- Search by license key, customer, or product
+- Status filter (All/Active/Inactive/Expired/Revoked) + date range
+- Pagination with configurable page size (10/20/50/100)
+- Action buttons: View Details, Edit, Renew, Revoke
+- Create License dialog with customer/product selection, type, dates
+- View License dialog with full detail info card
+
+#### Customer Management (`app/pages/customer_page.py`)
+- Searchable table with 7 columns
+- Status badges for active/inactive
+- Add and export actions
+
+#### Machine Management (`app/pages/machine_page.py`)
+- Hardware info: hostname, OS, CPU, RAM, fingerprint
+- License binding tracking
+- Activation dates and status
+- Blacklist/inactive status support
+
+#### Subscription Management (`app/pages/subscription_page.py`)
+- Plans (Basic/Standard/Premium/Enterprise)
+- Billing intervals (monthly/yearly/quarterly)
+- Amount tracking and status badges
+- Search and export
+
+#### Activation Management (`app/pages/activation_page.py`)
+- License-to-machine activation tracking
+- IP address and country tracking
+- Activation status management
+
+#### Software Registration (`app/pages/software_page.py`)
+- Register, edit, delete software products
+- Configure validation type (online/offline/hybrid)
+- Machine lock, anti-tamper, clock protection settings
+- Feature flags configuration
+- SDK generation per product
+
+#### SDK Generator (`app/pages/sdk_page.py`)
+- SDK generation history with version tracking
+- Multiple language support (Python, JavaScript, C#, Java, Go)
+- Download count and file size tracking
+- Generation progress indicator with animation
+
+#### Analytics (`app/pages/analytics_page.py`)
+- 4 chart widgets: Monthly Activations, Revenue Trends, License Growth, Software Registrations
+- Period filter (Daily/Weekly/Monthly/Yearly)
+- Export options (PDF, CSV)
+
+#### Audit Logs (`app/pages/audit_page.py`)
+- 100+ sample audit entries with timestamps
+- Severity filtering (info/warning/error/critical)
+- Colored severity badges
+- Search by action, user, or IP
+- Pagination
+
+#### Settings (`app/pages/settings_page.py`)
+- 6-tab interface: General, Security, Database, API, Theme, Backup
+- Application configuration fields
+- RSA key management
+- Database connection testing
+- API URL and key configuration
+- Dark/Light/System theme selection
+- Backup & restore functionality
+
+### UI Components (`app/widgets.py`)
+- **StatCard**: Modern metrics card with icon, value, trend, mini chart
+- **ToastNotification**: Auto-dismissing floating notifications (success/error/warning/info)
+- **LoadingOverlay**: Full-screen loading with spinner and progress bar
+- **EmptyState**: Placeholder with icon, message, and action button
+- **SkeletonCard**: Loading skeleton placeholders
+- **SearchBar**: Search input with icon and clear button
+- **FilterBar**: Status combo + date range filters
+- **Pagination**: Page navigation with configurable page size
+- **StatusBadge**: Colored status indicators
+- **ConfirmDialog**: Modern confirmation dialogs
+- **SectionHeader**: Page header with title, subtitle, and action buttons
+- **ProgressIndicator**: Determinate/indeterminate progress bars
+- **InfoRow**: Key-value information display
+- **ExportMenu**: Dropdown export (CSV/Excel/PDF)
+- **AvatarWidget**: Circular avatar with initials
+- **MiniChart**: Custom-painted mini bar charts
+
+### Seed Data (`app/seed_data.py`)
+The application includes realistic sample data for immediate demonstration:
+- 12 customers with companies
+- 50 license keys with various types and statuses
+- 10 software products
+- 24 subscriptions
+- 12 machines with hardware specs
+- 40 activations with IP tracking
+- 14 SDK history entries
+- 100 audit logs
+
+---
+
 ## 🏗️ Architecture
 
 ```
 software-license-manager/
 ├── app/                    # PySide6 Desktop GUI
-│   ├── main_window.py     # Main window with dark theme
-│   ├── pages/             # Application pages (Software, Dashboard, etc.)
-│   └── dialogs/           # Modal dialogs
+│   ├── main_window.py     # Main window with header, sidebar, pages
+│   ├── widgets.py         # 20+ reusable UI components
+│   ├── seed_data.py       # Sample data for demonstration
+│   └── pages/             # 12 application pages
+│       ├── dashboard_page.py
+│       ├── license_page.py
+│       ├── customer_page.py
+│       ├── machine_page.py
+│       ├── subscription_page.py
+│       ├── activation_page.py
+│       ├── analytics_page.py
+│       ├── audit_page.py
+│       ├── settings_page.py
+│       ├── sdk_page.py
+│       └── software_page.py
 ├── core/                  # Core configuration
 │   ├── config.py          # Pydantic Settings
 │   ├── constants.py       # Enums & constants
@@ -29,7 +192,7 @@ software-license-manager/
 ├── api/                   # FastAPI backend
 │   └── server/            # REST API endpoints (incl. client SDK routes)
 ├── tests/                 # Test suite (20+ software product tests)
-├── main.py                # Entry point
+├── main.py                # Entry point (api/gui/cli)
 ├── pytest.ini             # Pytest configuration
 └── requirements.txt       # Dependencies
 ```
@@ -92,19 +255,11 @@ software-license-manager/
 - **README Documentation**: Auto-generated integration guide
 - **ZIP Packaging**: Ready-to-distribute SDK package
 
-### 🛡️ Client-Side Security
-- **RSA Signature Verification**: Validate license authenticity offline
-- **Executable Hash Validation**: SHA-256 anti-tamper checks
-- **Clock Rollback Detection**: Prevent time-based exploits
-- **Machine Binding**: Lock licenses to specific hardware
-- **Online/Offline/Hybrid Modes**: Flexible validation strategies
-
 ### 📊 Dashboard
-- Active/Expired license counts
-- Subscription status overview
-- Machine status indicators
-- Server health monitoring
-- Real-time statistics
+- 8 stat cards with trends and mini charts
+- 4 chart widgets (License Trend, Revenue, Subscriptions, Activations)
+- Recent activity feed
+- Refresh and export functionality
 
 ### 🌐 REST API
 - FastAPI backend with async support
@@ -117,81 +272,19 @@ software-license-manager/
 
 ---
 
-## 🚀 Quick Start
-
-### Prerequisites
-- Python 3.13+
-- pip
-
-### Installation
-
-```bash
-# Clone the repository
-git clone https://github.com/yourusername/software-license-manager.git
-cd software-license-manager
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Configure environment
-cp .env.example .env
-# Edit .env with your settings
-
-# Run the API server
-python main.py api
-
-# Or run the desktop GUI
-python main.py gui
-```
-
-### Docker (API Server)
-
-```bash
-docker build -t license-manager .
-docker run -p 8000:8000 license-manager
-```
-
----
-
 ## 📖 Usage
 
 ### API Mode
-
-Start the license server:
-
 ```bash
 python main.py api
 ```
 
-The API will be available at `http://localhost:8000`
-
-#### API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| POST | `/api/v1/generate-license` | Generate a new license |
-| POST | `/api/v1/activate` | Activate a license online |
-| POST | `/api/v1/validate` | Validate a license |
-| POST | `/api/v1/renew` | Renew a subscription |
-| POST | `/api/v1/revoke` | Revoke a license |
-| POST | `/api/v1/machine/register` | Register a machine |
-| POST | `/api/v1/machine/remove` | Remove a machine |
-| POST | `/api/v1/machine/blacklist` | Blacklist a machine |
-| POST | `/api/v1/subscription/create` | Create a subscription |
-| POST | `/api/v1/subscription/update` | Update subscription status |
-| POST | `/api/v1/subscription/cancel` | Cancel a subscription |
-| POST | `/api/v1/client/activate` | Client SDK activation |
-| POST | `/api/v1/client/validate` | Client SDK validation |
-| POST | `/api/v1/client/deactivate` | Client SDK deactivation |
-| POST | `/api/v1/offline-activation` | Process offline activation |
-| POST | `/api/v1/license/transfer` | Transfer license to new customer |
-| GET | `/api/v1/stats/licenses` | License statistics |
-| GET | `/api/v1/stats/subscriptions` | Subscription statistics |
-| GET | `/api/v1/public-key` | Get public key |
+### GUI Mode
+```bash
+python main.py gui
+```
 
 ### CLI Mode
-
 ```bash
 # Generate a trial license
 python main.py cli generate \
@@ -207,65 +300,6 @@ python main.py cli validate LICENSE-KEY-HERE
 # Generate machine request file
 python main.py cli request --output machine.request
 ```
-
-### Software Registration (GUI)
-
-Navigate to **Software → Registered Apps** in the sidebar to:
-
-1. **Add New Software**: Register a new application with validation settings
-2. **Edit Software**: Modify existing software registration
-3. **Delete Software**: Soft-delete a software product
-4. **Search**: Filter by name, company, or app ID
-5. **Generate SDK**: Create a client integration package for any registered app
-
-### Client SDK Integration
-
-After generating a client SDK package, integrate it into your external software:
-
-```python
-from client_sdk.validator import LicenseValidator
-from client_sdk.license_client import LicenseClient
-from client_sdk.machine_fingerprint import MachineFingerprint
-
-def main():
-    validator = LicenseValidator()
-    
-    # Validate license at startup
-    result = validator.validate()
-    
-    if not result["valid"]:
-        # Show activation dialog
-        client = LicenseClient()
-        fingerprint = MachineFingerprint()
-        machine_id = fingerprint.generate()
-        
-        response = client.activate("LICENSE-KEY", machine_id)
-        if response.get("activated"):
-            validator.save_license(response["license_data"])
-        else:
-            print("Activation failed")
-            return
-    
-    # Launch your application
-    run_app()
-```
-
-### GUI Mode
-
-```bash
-python main.py gui
-```
-
-Launches the desktop application with:
-- Dark theme interface
-- Sidebar navigation
-- Dashboard with statistics
-- License management pages
-- Subscription management
-- Activation tools
-- Machine management
-- **Software Registration page**
-- Settings configuration
 
 ---
 
@@ -309,58 +343,6 @@ Receive validation response
 Allow application execution (or show activation dialog)
 ```
 
-### Machine Locking Flow
-```
-1. Collect hardware identifiers (CPU, motherboard, BIOS, disk, MAC, GUID)
-2. Combine and sort identifiers
-3. Hash with SHA-256
-4. Store fingerprint with activation
-5. On validation: compare fingerprints
-```
-
-### Offline Activation Flow
-```
-Client:                          Server:
-   |                               |
-   |-- Generate machine.request -->|
-   |   (encrypted with AES-256)    |
-   |                               |-- Decrypt request
-   |                               |-- Validate license
-   |                               |-- Generate activation.lic
-   |<-- Return activation.lic -----|
-   |   (encrypted with AES-256)    |
-   |                               |
-   |-- Import activation.lic ----->|
-   |   (verify signature)          |
-```
-
----
-
-## 🗄️ Database Schema
-
-### Tables
-- **software_products**: Registered software applications for SDK integration
-- **products**: Software products with licensing policies
-- **customers**: Customer information and authentication
-- **licenses**: License keys, types, signatures, and status
-- **subscriptions**: Recurring billing and renewal tracking
-- **machines**: Registered hardware and fingerprints
-- **activations**: Activation events and validation history
-- **audit_logs**: Security audit trail
-- **app_settings**: Application configuration
-
-### Relationships
-```
-Product 1──N License
-Customer 1──N License
-Customer 1──N Machine
-Customer 1──N Activation
-License 1──1 Subscription
-License 1──N Machine
-License 1──N Activation
-Machine 1──N Activation
-```
-
 ---
 
 ## 🧪 Testing
@@ -374,28 +356,11 @@ pytest --cov=.
 
 # Run specific test file
 pytest tests/test_software_product.py -v
-
-# Run tests with verbose output
-pytest -v --tb=long
-```
-
----
-
-## 📦 Packaging
-
-```bash
-# Package as standalone executable
-pyinstaller --onefile --windowed main.py
-
-# Package with custom icon
-pyinstaller --onefile --windowed --icon=assets/icon.ico main.py
 ```
 
 ---
 
 ## ⚙️ Configuration
-
-All configuration is managed through environment variables or `.env` file:
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -411,30 +376,6 @@ All configuration is managed through environment variables or `.env` file:
 
 ---
 
-## 📄 License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
-
----
-
-## 🤝 Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
----
-
-## 📞 Support
-
-- **Documentation**: See the `docs/` directory
-- **Issues**: GitHub Issues
-- **Email**: support@licensemanager.com
-
----
-
 ## 🏆 Technical Highlights
 
 - **Clean Architecture**: Separation of concerns with layers
@@ -444,8 +385,12 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Type Hints**: Full type annotations throughout
 - **Async/Await**: Non-blocking database and API operations
 - **Comprehensive Logging**: Structured logging with Loguru
-- **Error Handling**: Graceful error recovery
 - **Security First**: Encryption, signing, anti-tampering
-- **Test Coverage**: Unit and integration tests (20+ tests for Software Product module)
-- **Client SDK Generation**: Auto-generated integration packages
-- **Multi-Layer Validation**: RSA + expiry + machine + anti-tamper + clock
+- **Test Coverage**: Unit and integration tests (20+ tests)
+- **Reusable Widget Library**: 20+ custom PySide6 components
+- **Custom Chart Engine**: Painted bar/line charts without external dependencies
+- **Toast Notification System**: Auto-dismissing floating notifications
+- **Keyboard Navigation**: Full keyboard shortcut support
+- **Dark/Light Theme**: Toggle between dark and light themes
+- **Animated UI**: Smooth sidebar collapse/expand animations
+- **Seed Data**: 300+ realistic sample records for demonstration
