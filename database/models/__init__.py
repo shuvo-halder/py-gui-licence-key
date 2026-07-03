@@ -12,6 +12,7 @@ from database.models.machine import MachineModel
 from database.models.activation import ActivationModel
 from database.models.audit_log import AuditLogModel
 from database.models.settings import AppSettingsModel
+from database.models.software_product import SoftwareProductModel
 
 __all__ = [
     "ProductModel",
@@ -22,4 +23,5 @@ __all__ = [
     "ActivationModel",
     "AuditLogModel",
     "AppSettingsModel",
+    "SoftwareProductModel",
 ]

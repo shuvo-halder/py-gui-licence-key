@@ -13,6 +13,7 @@ from database.repository.machine_repository import MachineRepository
 from database.repository.activation_repository import ActivationRepository
 from database.repository.audit_log_repository import AuditLogRepository
 from database.repository.settings_repository import SettingsRepository
+from database.repository.software_product_repository import SoftwareProductRepository
 
 __all__ = [
     "BaseRepository",
@@ -24,4 +25,5 @@ __all__ = [
     "ActivationRepository",
     "AuditLogRepository",
     "SettingsRepository",
+    "SoftwareProductRepository",
 ]

@@ -12,12 +12,14 @@ from PySide6.QtWidgets import (
     QLabel, QPushButton, QStackedWidget, QFrame,
     QApplication, QSizePolicy, QSpacerItem,
 )
-from PySide6.QtCore import Qt, QSize, Signal, Slot
+from PySide6.QtCore import Qt, QSize, Signal, Slot, QTimer
 from PySide6.QtGui import QFont, QIcon, QPalette, QColor, QAction
 
 from core.config import settings
 from core.constants import Constants
 from core.logger import get_logger
+
+from app.pages.software_page import SoftwarePage
 
 logger = get_logger(__name__)
 
@@ -99,8 +101,9 @@ class Sidebar(QFrame):
             (4, "💻", "Machines"),
             (5, "👥", "Customers"),
             (6, "📦", "Products"),
-            (7, "⚙️", "Settings"),
-            (8, "📝", "Logs"),
+            (7, "🔌", "Software"),
+            (8, "⚙️", "Settings"),
+            (9, "📝", "Logs"),
         ]
 
         for page_index, icon, text in nav_items:
@@ -296,6 +299,16 @@ class MainWindow(QMainWindow):
 
     def _setup_pages(self) -> None:
         """Setup all application pages."""
+        # Software page
+        self.software_page = SoftwarePage()
+
+        # Connect software page signals
+        self.software_page.product_added.connect(self._on_product_added)
+        self.software_page.product_updated.connect(self._on_product_updated)
+        self.software_page.product_deleted.connect(self._on_product_deleted)
+        self.software_page.search_requested.connect(self._on_software_search)
+        self.software_page.sdk_generate_requested.connect(self._on_sdk_generate)
+
         pages = [
             (DashboardPage(), "Dashboard"),
             (PlaceholderPage("License Management", "🔑"), "Licenses"),
@@ -304,6 +317,7 @@ class MainWindow(QMainWindow):
             (PlaceholderPage("Machine Management", "💻"), "Machines"),
             (PlaceholderPage("Customer Management", "👥"), "Customers"),
             (PlaceholderPage("Product Management", "📦"), "Products"),
+            (self.software_page, "Software"),
             (PlaceholderPage("Settings", "⚙️"), "Settings"),
             (PlaceholderPage("Audit Logs", "📝"), "Logs"),
         ]
@@ -311,11 +325,186 @@ class MainWindow(QMainWindow):
         for page, name in pages:
             self.stack.addWidget(page)
 
+        # Load software products after setup
+        QTimer.singleShot(500, self._load_software_products)
+
     def _on_page_changed(self, page_index: int) -> None:
         """Handle page change from sidebar."""
         self.sidebar.set_active_page(page_index)
         self.stack.setCurrentIndex(page_index)
         logger.info(f"Navigated to page: {page_index}")
+
+    def _load_software_products(self) -> None:
+        """Load software products into the Software page."""
+        try:
+            import asyncio
+            from database import async_session_factory
+            from services.software_product.service import SoftwareProductService
+            from services.encryption.service import EncryptionService
+
+            async def _load():
+                async with async_session_factory() as session:
+                    encryption = EncryptionService()
+                    service = SoftwareProductService(session, encryption)
+                    products = await service.list_products(limit=1000)
+                    return [await service.to_dict(p) for p in products]
+
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            try:
+                products = loop.run_until_complete(_load())
+                self.software_page.load_products(products)
+            finally:
+                loop.close()
+
+            logger.info(f"Loaded {len(products)} software products")
+        except Exception as e:
+            logger.warning(f"Could not load software products: {e}")
+            self.software_page.load_products([])
+
+    def _on_product_added(self, data: dict) -> None:
+        """Handle adding a new software product."""
+        import asyncio
+        from database import async_session_factory
+        from services.software_product.service import SoftwareProductService
+        from services.encryption.service import EncryptionService
+
+        async def _add():
+            async with async_session_factory() as session:
+                encryption = EncryptionService()
+                service = SoftwareProductService(session, encryption)
+                product = await service.create_product(
+                    name=data["name"],
+                    version=data["version"],
+                    validation_type=data["validation_type"],
+                    exe_name=data.get("exe_name"),
+                    company_name=data.get("company_name"),
+                    machine_lock=data.get("machine_lock", True),
+                    max_activations=data.get("max_activations", 5),
+                    anti_tamper=data.get("anti_tamper", True),
+                    clock_protection=data.get("clock_protection", True),
+                    feature_flags=data.get("feature_flags"),
+                )
+                await session.commit()
+                return await service.to_dict(product)
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            product = loop.run_until_complete(_add())
+            self._load_software_products()
+            self.software_page.show_success(f"Product '{product['name']}' registered successfully!")
+        except ValueError as e:
+            self.software_page.show_error(str(e))
+        except Exception as e:
+            self.software_page.show_error(f"Failed to add product: {e}")
+        finally:
+            loop.close()
+
+    def _on_product_updated(self, data: dict) -> None:
+        """Handle updating a software product."""
+        import asyncio
+        from database import async_session_factory
+        from services.software_product.service import SoftwareProductService
+        from services.encryption.service import EncryptionService
+
+        async def _update():
+            async with async_session_factory() as session:
+                encryption = EncryptionService()
+                service = SoftwareProductService(session, encryption)
+                product_id = data.pop("product_id")
+                product = await service.update_product(product_id, **data)
+                await session.commit()
+                return product
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_update())
+            self._load_software_products()
+            self.software_page.show_success("Product updated successfully!")
+        except Exception as e:
+            self.software_page.show_error(f"Failed to update product: {e}")
+        finally:
+            loop.close()
+
+    def _on_product_deleted(self, product_id: str) -> None:
+        """Handle deleting a software product."""
+        import asyncio
+        from database import async_session_factory
+        from services.software_product.service import SoftwareProductService
+        from services.encryption.service import EncryptionService
+
+        async def _delete():
+            async with async_session_factory() as session:
+                encryption = EncryptionService()
+                service = SoftwareProductService(session, encryption)
+                result = await service.delete_product(product_id)
+                await session.commit()
+                return result
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            loop.run_until_complete(_delete())
+            self._load_software_products()
+            self.software_page.show_success("Product deleted successfully!")
+        except Exception as e:
+            self.software_page.show_error(f"Failed to delete product: {e}")
+        finally:
+            loop.close()
+
+    def _on_software_search(self, search_term: str) -> None:
+        """Handle search in software products."""
+        if not search_term.strip():
+            self._load_software_products()
+            return
+
+        import asyncio
+        from database import async_session_factory
+        from services.software_product.service import SoftwareProductService
+        from services.encryption.service import EncryptionService
+
+        async def _search():
+            async with async_session_factory() as session:
+                encryption = EncryptionService()
+                service = SoftwareProductService(session, encryption)
+                products = await service.search_products(search_term, limit=1000)
+                return [await service.to_dict(p) for p in products]
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            products = loop.run_until_complete(_search())
+            self.software_page.load_products(products)
+        except Exception as e:
+            logger.warning(f"Search failed: {e}")
+        finally:
+            loop.close()
+
+    def _on_sdk_generate(self, product_id: str) -> None:
+        """Handle SDK generation for a product."""
+        import asyncio
+        from database import async_session_factory
+        from services.software_product.service import SoftwareProductService
+        from services.encryption.service import EncryptionService
+
+        async def _generate():
+            async with async_session_factory() as session:
+                encryption = EncryptionService()
+                service = SoftwareProductService(session, encryption)
+                zip_path = await service.generate_client_sdk(product_id)
+                return zip_path
+
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        try:
+            zip_path = loop.run_until_complete(_generate())
+            self.software_page.show_sdk_result(zip_path)
+        except Exception as e:
+            self.software_page.show_error(f"SDK generation failed: {e}")
+        finally:
+            loop.close()
 
     def _apply_dark_theme(self) -> None:
         """Apply dark theme to the application."""

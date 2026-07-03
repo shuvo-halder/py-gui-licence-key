@@ -1,6 +1,6 @@
 # 🔐 Software License Manager
 
-A **production-ready**, **enterprise-grade** desktop application for managing software licenses with cryptographic security, machine locking, subscription management, and a REST API backend.
+A **production-ready**, **enterprise-grade** desktop application for managing software licenses with cryptographic security, machine locking, subscription management, software registration, client SDK generation, and a REST API backend.
 
 ---
 
@@ -10,8 +10,7 @@ A **production-ready**, **enterprise-grade** desktop application for managing so
 software-license-manager/
 ├── app/                    # PySide6 Desktop GUI
 │   ├── main_window.py     # Main window with dark theme
-│   ├── pages/             # Application pages
-│   ├── widgets/           # Reusable widgets
+│   ├── pages/             # Application pages (Software, Dashboard, etc.)
 │   └── dialogs/           # Modal dialogs
 ├── core/                  # Core configuration
 │   ├── config.py          # Pydantic Settings
@@ -25,11 +24,13 @@ software-license-manager/
 │   ├── licensing/         # License generation & validation
 │   ├── activation/        # Online/offline activation
 │   ├── subscription/      # Subscription management
-│   └── hardware/          # Machine fingerprinting
+│   ├── hardware/          # Machine fingerprinting
+│   └── software_product/  # Software registration & SDK generation
 ├── api/                   # FastAPI backend
-│   └── server/            # REST API endpoints
-├── tests/                 # Test suite
+│   └── server/            # REST API endpoints (incl. client SDK routes)
+├── tests/                 # Test suite (20+ software product tests)
 ├── main.py                # Entry point
+├── pytest.ini             # Pytest configuration
 └── requirements.txt       # Dependencies
 ```
 
@@ -71,6 +72,33 @@ software-license-manager/
 - **Clock Manipulation Detection**: Prevent time-based exploits
 - **JWT Authentication**: Secure API access
 
+### 🔌 Software Registration & License Injection
+- **Software Product Registry**: Register and manage software applications
+- **App ID Generation**: Auto-generated UUIDs for each registered app
+- **Validation Modes**: Online, Offline, and Hybrid license validation
+- **Machine Locking**: Per-software machine lock configuration
+- **Anti-Tamper**: Executable integrity validation per product
+- **Clock Protection**: Clock manipulation detection per product
+- **Feature Flags**: JSON-based feature flag configuration
+- **Search & Filter**: Search registered apps by name, company, or app ID
+
+### 📦 Client SDK Generation
+- **Auto-Generated SDK**: One-click client integration package generation
+- **License Client**: HTTP client for server API communication
+- **License Validator**: Multi-layered startup validation (RSA, expiry, machine, anti-tamper, clock)
+- **Machine Fingerprint**: Hardware-based device identification
+- **Public Key Export**: RSA public key for offline signature verification
+- **Config JSON**: Auto-configured SDK settings
+- **README Documentation**: Auto-generated integration guide
+- **ZIP Packaging**: Ready-to-distribute SDK package
+
+### 🛡️ Client-Side Security
+- **RSA Signature Verification**: Validate license authenticity offline
+- **Executable Hash Validation**: SHA-256 anti-tamper checks
+- **Clock Rollback Detection**: Prevent time-based exploits
+- **Machine Binding**: Lock licenses to specific hardware
+- **Online/Offline/Hybrid Modes**: Flexible validation strategies
+
 ### 📊 Dashboard
 - Active/Expired license counts
 - Subscription status overview
@@ -84,6 +112,7 @@ software-license-manager/
 - Activation and validation endpoints
 - Subscription management
 - Machine registration
+- Client SDK activation/validation endpoints
 - Public key distribution
 
 ---
@@ -152,6 +181,9 @@ The API will be available at `http://localhost:8000`
 | POST | `/api/v1/subscription/create` | Create a subscription |
 | POST | `/api/v1/subscription/update` | Update subscription status |
 | POST | `/api/v1/subscription/cancel` | Cancel a subscription |
+| POST | `/api/v1/client/activate` | Client SDK activation |
+| POST | `/api/v1/client/validate` | Client SDK validation |
+| POST | `/api/v1/client/deactivate` | Client SDK deactivation |
 | POST | `/api/v1/offline-activation` | Process offline activation |
 | POST | `/api/v1/license/transfer` | Transfer license to new customer |
 | GET | `/api/v1/stats/licenses` | License statistics |
@@ -176,6 +208,48 @@ python main.py cli validate LICENSE-KEY-HERE
 python main.py cli request --output machine.request
 ```
 
+### Software Registration (GUI)
+
+Navigate to **Software → Registered Apps** in the sidebar to:
+
+1. **Add New Software**: Register a new application with validation settings
+2. **Edit Software**: Modify existing software registration
+3. **Delete Software**: Soft-delete a software product
+4. **Search**: Filter by name, company, or app ID
+5. **Generate SDK**: Create a client integration package for any registered app
+
+### Client SDK Integration
+
+After generating a client SDK package, integrate it into your external software:
+
+```python
+from client_sdk.validator import LicenseValidator
+from client_sdk.license_client import LicenseClient
+from client_sdk.machine_fingerprint import MachineFingerprint
+
+def main():
+    validator = LicenseValidator()
+    
+    # Validate license at startup
+    result = validator.validate()
+    
+    if not result["valid"]:
+        # Show activation dialog
+        client = LicenseClient()
+        fingerprint = MachineFingerprint()
+        machine_id = fingerprint.generate()
+        
+        response = client.activate("LICENSE-KEY", machine_id)
+        if response.get("activated"):
+            validator.save_license(response["license_data"])
+        else:
+            print("Activation failed")
+            return
+    
+    # Launch your application
+    run_app()
+```
+
 ### GUI Mode
 
 ```bash
@@ -190,6 +264,7 @@ Launches the desktop application with:
 - Subscription management
 - Activation tools
 - Machine management
+- **Software Registration page**
 - Settings configuration
 
 ---
@@ -209,6 +284,29 @@ Launches the desktop application with:
 3. Sign with RSA-4096 private key (PSS padding, SHA-256)
 4. Store signature with license
 5. On validation: verify with public key
+```
+
+### Client Validation Flow
+```
+Application Start
+  ↓
+Load local license file
+  ↓
+Verify RSA signature using public.pem
+  ↓
+Validate expiration date
+  ↓
+Validate machine fingerprint
+  ↓
+Check anti-tampering hash (SHA-256)
+  ↓
+Check clock rollback attempts
+  ↓
+If online/hybrid mode: POST /api/v1/client/validate
+  ↓
+Receive validation response
+  ↓
+Allow application execution (or show activation dialog)
 ```
 
 ### Machine Locking Flow
@@ -241,6 +339,7 @@ Client:                          Server:
 ## 🗄️ Database Schema
 
 ### Tables
+- **software_products**: Registered software applications for SDK integration
 - **products**: Software products with licensing policies
 - **customers**: Customer information and authentication
 - **licenses**: License keys, types, signatures, and status
@@ -274,7 +373,7 @@ pytest
 pytest --cov=.
 
 # Run specific test file
-pytest tests/test_encryption.py -v
+pytest tests/test_software_product.py -v
 
 # Run tests with verbose output
 pytest -v --tb=long
@@ -347,4 +446,6 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - **Comprehensive Logging**: Structured logging with Loguru
 - **Error Handling**: Graceful error recovery
 - **Security First**: Encryption, signing, anti-tampering
-- **Test Coverage**: Unit and integration tests
+- **Test Coverage**: Unit and integration tests (20+ tests for Software Product module)
+- **Client SDK Generation**: Auto-generated integration packages
+- **Multi-Layer Validation**: RSA + expiry + machine + anti-tamper + clock

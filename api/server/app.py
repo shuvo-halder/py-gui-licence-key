@@ -25,6 +25,7 @@ from core.constants import (
 )
 from core.logger import get_logger
 from database import init_database, close_database, get_session, async_session_factory
+from api.server.routes.client_validation import router as client_validation_router
 from services.encryption.service import EncryptionService
 from services.hardware.service import HardwareService
 from services.licensing.service import LicensingService
@@ -158,6 +159,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Include routers
+app.include_router(client_validation_router)
 
 
 # --- Health Check ---
