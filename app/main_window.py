@@ -8,7 +8,6 @@ and server connection status.
 
 from __future__ import annotations
 
-import asyncio
 from typing import Optional
 
 from PySide6.QtWidgets import (
@@ -531,11 +530,15 @@ class MainWindow(QMainWindow):
         # Setup keyboard shortcuts
         self._setup_shortcuts()
 
+        # Load software products after setup (best-effort, never crashes the app)
+        QTimer.singleShot(500, self._load_software_products_safe)
+
         logger.info(f"Main window initialized - {settings.APP_NAME} v{settings.APP_VERSION}")
 
     def _setup_pages(self) -> None:
         """Setup all application pages and add them to the stack."""
-        # SoftwarePage instances with signal connections
+        # Single SoftwarePage instance with signal connections, used for both
+        # "Products" (index 3) and "Software" (index 7) sidebar entries
         self.software_page = SoftwarePage()
         self.software_page.product_added.connect(self._on_product_added)
         self.software_page.product_updated.connect(self._on_product_updated)
@@ -547,7 +550,7 @@ class MainWindow(QMainWindow):
             (DashboardPage(), "Dashboard"),
             (LicensePage(), "Licenses"),
             (CustomerPage(), "Customers"),
-            (SoftwarePage(), "Products"),
+            (self.software_page, "Products"),
             (SubscriptionPage(), "Subscriptions"),
             (MachinePage(), "Machines"),
             (ActivationPage(), "Activations"),
@@ -560,9 +563,6 @@ class MainWindow(QMainWindow):
 
         for page, name in pages:
             self.stack.addWidget(page)
-
-        # Load software products after setup
-        QTimer.singleShot(500, self._load_software_products)
 
         logger.info(f"Setup {len(pages)} application pages")
 
@@ -578,11 +578,10 @@ class MainWindow(QMainWindow):
             "Ctrl+S": 4,  # Subscriptions
             "Ctrl+M": 5,  # Machines
             "Ctrl+A": 6,  # Activations
-            "Ctrl+W": 7,  # Software
-            "Ctrl+G": 8,  # SDK Generator
-            "Ctrl+Y": 9,  # Analytics
-            "Ctrl+O": 10, # Audit Logs
-            "Ctrl+,": 11, # Settings
+            "Ctrl+G": 7,  # SDK Generator
+            "Ctrl+Y": 8,  # Analytics
+            "Ctrl+O": 9,  # Audit Logs
+            "Ctrl+,": 10, # Settings
         }
 
         for key_seq, page_idx in shortcuts.items():
@@ -660,42 +659,49 @@ class MainWindow(QMainWindow):
             ToastType.SUCCESS
         )
 
-    def _load_software_products(self) -> None:
-        """Load software products into the Software page."""
+    def _load_software_products_safe(self) -> None:
+        """Load software products safely - never crashes the app."""
         try:
             import asyncio
-            from database import async_session_factory
+            from database import async_session_factory, init_database
             from services.software_product.service import SoftwareProductService
             from services.encryption.service import EncryptionService
 
             async def _load():
+                await init_database()
                 async with async_session_factory() as session:
                     encryption = EncryptionService()
                     service = SoftwareProductService(session, encryption)
                     products = await service.list_products(limit=1000)
-                    return [await service.to_dict(p) for p in products]
+                    return [p.to_dict() for p in products]
 
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
             try:
                 products = loop.run_until_complete(_load())
                 self.software_page.load_products(products)
+                logger.info(f"Loaded {len(products)} software products")
+            except Exception as e:
+                logger.warning(f"Could not load software products: {e}")
+                self.software_page.load_products([])
             finally:
                 loop.close()
-
-            logger.info(f"Loaded {len(products)} software products")
         except Exception as e:
-            logger.warning(f"Could not load software products: {e}")
-            self.software_page.load_products([])
+            logger.warning(f"Could not load software products (outer): {e}")
+            try:
+                self.software_page.load_products([])
+            except Exception:
+                pass
 
     def _on_product_added(self, data: dict) -> None:
         """Handle adding a new software product."""
         import asyncio
-        from database import async_session_factory
+        from database import async_session_factory, init_database
         from services.software_product.service import SoftwareProductService
         from services.encryption.service import EncryptionService
 
         async def _add():
+            await init_database()
             async with async_session_factory() as session:
                 encryption = EncryptionService()
                 service = SoftwareProductService(session, encryption)
@@ -712,13 +718,13 @@ class MainWindow(QMainWindow):
                     feature_flags=data.get("feature_flags"),
                 )
                 await session.commit()
-                return await service.to_dict(product)
+                return product.to_dict()
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
         try:
             product = loop.run_until_complete(_add())
-            self._load_software_products()
+            self._load_software_products_safe()
             self.software_page.show_success(f"Product '{product['name']}' registered successfully!")
         except ValueError as e:
             self.software_page.show_error(str(e))
@@ -730,11 +736,12 @@ class MainWindow(QMainWindow):
     def _on_product_updated(self, data: dict) -> None:
         """Handle updating a software product."""
         import asyncio
-        from database import async_session_factory
+        from database import async_session_factory, init_database
         from services.software_product.service import SoftwareProductService
         from services.encryption.service import EncryptionService
 
         async def _update():
+            await init_database()
             async with async_session_factory() as session:
                 encryption = EncryptionService()
                 service = SoftwareProductService(session, encryption)
@@ -747,7 +754,7 @@ class MainWindow(QMainWindow):
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(_update())
-            self._load_software_products()
+            self._load_software_products_safe()
             self.software_page.show_success("Product updated successfully!")
         except Exception as e:
             self.software_page.show_error(f"Failed to update product: {e}")
@@ -757,11 +764,12 @@ class MainWindow(QMainWindow):
     def _on_product_deleted(self, product_id: str) -> None:
         """Handle deleting a software product."""
         import asyncio
-        from database import async_session_factory
+        from database import async_session_factory, init_database
         from services.software_product.service import SoftwareProductService
         from services.encryption.service import EncryptionService
 
         async def _delete():
+            await init_database()
             async with async_session_factory() as session:
                 encryption = EncryptionService()
                 service = SoftwareProductService(session, encryption)
@@ -773,7 +781,7 @@ class MainWindow(QMainWindow):
         asyncio.set_event_loop(loop)
         try:
             loop.run_until_complete(_delete())
-            self._load_software_products()
+            self._load_software_products_safe()
             self.software_page.show_success("Product deleted successfully!")
         except Exception as e:
             self.software_page.show_error(f"Failed to delete product: {e}")
@@ -783,20 +791,21 @@ class MainWindow(QMainWindow):
     def _on_software_search(self, search_term: str) -> None:
         """Handle search in software products."""
         if not search_term.strip():
-            self._load_software_products()
+            self._load_software_products_safe()
             return
 
         import asyncio
-        from database import async_session_factory
+        from database import async_session_factory, init_database
         from services.software_product.service import SoftwareProductService
         from services.encryption.service import EncryptionService
 
         async def _search():
+            await init_database()
             async with async_session_factory() as session:
                 encryption = EncryptionService()
                 service = SoftwareProductService(session, encryption)
                 products = await service.search_products(search_term, limit=1000)
-                return [await service.to_dict(p) for p in products]
+                return [p.to_dict() for p in products]
 
         loop = asyncio.new_event_loop()
         asyncio.set_event_loop(loop)
@@ -811,11 +820,12 @@ class MainWindow(QMainWindow):
     def _on_sdk_generate(self, product_id: str) -> None:
         """Handle SDK generation for a product."""
         import asyncio
-        from database import async_session_factory
+        from database import async_session_factory, init_database
         from services.software_product.service import SoftwareProductService
         from services.encryption.service import EncryptionService
 
         async def _generate():
+            await init_database()
             async with async_session_factory() as session:
                 encryption = EncryptionService()
                 service = SoftwareProductService(session, encryption)
